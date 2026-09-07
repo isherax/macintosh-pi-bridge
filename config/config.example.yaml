@@ -1,0 +1,30 @@
+# Default profile: original Macintosh Plus M0001A with its 512x342
+# monochrome CRT. The capture values below were validated with a UVC HDMI
+# dongle that provides MJPEG 640x480 at 60 Hz.
+#
+# Copy this file to config/local.yaml for machine-specific settings or to
+# override the profile for different hardware.
+# config/local.yaml is ignored by git.
+
+capture:
+  device: /dev/video0
+  pixel_format: MJPG
+  width: 640
+  height: 480
+  fps: 60
+
+convert:
+  width: 512
+  height: 342
+  # threshold (lowest latency) or floyd_steinberg
+  mode: threshold
+  # 96 preserves antialiased terminal and icon strokes in this profile.
+  threshold: 96
+  # stretch fills the Macintosh Plus raster after the 4:3 capture input.
+  fit: stretch
+  invert: false
+
+output:
+  bind: 0.0.0.0
+  port: 5000
+  jpeg_quality: 80

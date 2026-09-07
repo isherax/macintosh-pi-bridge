@@ -1,0 +1,24 @@
+# EXPERIMENTAL REFERENCE ONLY
+#
+# Do not copy this file directly into /boot/firmware/config.txt.
+# Validate the current Raspberry Pi OS KMS/DPI configuration syntax, GPIO
+# mapping, signal polarity, and electrical interface before experimenting.
+#
+# The numbers below describe the target raster model:
+#   active:       512 x 342
+#   total:        approximately 704 x 370
+#   pixel clock:  approximately 15.67 MHz
+#   refresh:      approximately 60.15 Hz
+#
+# A legacy firmware-style timing model would be shaped approximately like:
+#
+# dtoverlay=dpi24
+# enable_dpi_lcd=1
+# display_default_lcd=1
+# dpi_group=2
+# dpi_mode=87
+# dpi_timings=15670000 512 32 128 32 342 11 3 14 0 0 0 0 0 0 0 0
+#
+# The exact dpi_timings field order and output-format value are platform and
+# firmware dependent. KMS may require a video= or custom DRM mode instead.
+# This project will not apply boot settings automatically.

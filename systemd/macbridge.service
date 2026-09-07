@@ -1,0 +1,19 @@
+[Unit]
+Description=Macintosh Pi Bridge video pipeline
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Change these paths and the service account for the target Pi.
+User=macbridge
+WorkingDirectory=/opt/macintosh-pi-bridge
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/macintosh-pi-bridge/src
+ExecStart=/opt/macintosh-pi-bridge/.venv/bin/python -m macbridge run --config /opt/macintosh-pi-bridge/config/local.yaml
+Restart=on-failure
+RestartSec=2
+SupplementaryGroups=video
+
+[Install]
+WantedBy=multi-user.target
