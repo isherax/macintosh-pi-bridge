@@ -6,8 +6,9 @@ CRT output stage. A Raspberry Pi handles capture and conversion; it is not the
 computer running the desktop.
 
 The current stage uses a USB UVC HDMI capture dongle and a network preview.
-The CRT electrical interface and Raspberry Pi DPI output are deliberately
-separate and are not enabled by this repository yet.
+The Pi 4 KMS/DPI pin map is locked so the analog-board interposer can be
+wired once. This repository still does not drive a CRT, write boot
+configuration, or attach to an analog board.
 
 ## Design goals
 
@@ -62,7 +63,8 @@ macintosh-pi-bridge/
 ├── systemd/
 │   └── macbridge.service
 ├── scripts/
-│   └── inspect-capture.sh
+│   ├── inspect-capture.sh
+│   └── validate-dpi.sh
 ├── src/
 │   └── macbridge/
 │       ├── __init__.py
@@ -71,13 +73,15 @@ macintosh-pi-bridge/
 │       ├── config.py
 │       ├── capture.py
 │       ├── convert.py
+│       ├── dpi.py
 │       ├── patterns.py
 │       ├── pipeline.py
 │       └── outputs/
 │           ├── __init__.py
 │           └── preview.py
 └── tests/
-    └── test_convert.py
+    ├── test_convert.py
+    └── test_dpi.py
 ```
 
 `config/local.yaml` is intentionally absent from the repository. Copy the
@@ -349,26 +353,63 @@ sudo systemctl status macbridge.service
 The service account must be able to read the capture node, normally through
 the `video` group.
 
-## Future DPI output
+## Pi 4 KMS/DPI pin lock
 
-`config/dpi-config.txt.example` records an experimental timing model only:
+Target platform: Raspberry Pi 4, Raspberry Pi OS Bookworm, KMS. The BCM2711
+DPI block fixes VSYNC on GPIO2 and HSYNC on GPIO3. Monochrome VIDEO uses
+RGB565 mode 2 and taps the red most-significant bit on GPIO19. Wire these
+three signals through a 3.3 V level buffer; do not connect Pi GPIOs directly
+to 5 V Macintosh analog-board TTL.
 
-- 512 active horizontal pixels;
-- approximately 704 total horizontal clocks;
-- 342 active vertical lines;
-- approximately 370 total vertical lines;
-- approximately 15.67 MHz pixel clock;
-- approximately 60.15 Hz refresh.
+| Signal | BCM GPIO | Header pin | DPI function |
+| --- | --- | --- | --- |
+| VSYNC | 2 | 3 | LCD_VSYNC |
+| HSYNC | 3 | 5 | LCD_HSYNC |
+| VIDEO | 19 | 35 | DPI_D15 (RGB565 R7) |
+| GND | — | 6, 9, 14, 20, 25, 30, 34, or 39 | ground |
 
-Do not apply that file blindly. Validate the timing and GPIO mapping against
-the current Raspberry Pi OS KMS/DPI documentation and the actual analog-board
-interface. The future output must use hardware-generated DPI/KMS timing and a
-proper level buffer/interposer. The original logic board and analog-board power
-loading are hardware concerns outside this software repository.
+`macbridge.dpi` is the software source of truth for that map. GPIO8 (B7) and
+GPIO14 (G7) would also toggle if every RGB channel is 0 or 255; do not wire
+them. A later custom overlay can mux only GPIO2/3/19 without moving the
+wires.
+
+`config/dpi-config.txt.example` is a Bookworm `vc4-kms-dpi-generic` fragment
+for 512×342 at 15.6672 MHz (704×370 total, about 60.15 Hz). It is not applied
+automatically. Legacy `dtoverlay=dpi24` / `dpi_timings` entries are obsolete
+on Bookworm. After reviewing pinmux conflicts in that file, append the
+`dtparam`/`dtoverlay` lines to `/boot/firmware/config.txt` and reboot:
+
+```bash
+# Review the fragment, then append only the dtoverlay/dtparam lines.
+sudo nano /boot/firmware/config.txt
+sudo reboot
+```
+
+Bookworm already loads `dtoverlay=vc4-kms-v3d`; do not duplicate it. Porch
+widths, sync pulse lengths, and sync polarity are overlay parameters and can
+be tuned later without resoldering. Video polarity stays `convert.invert`.
+
+On the Pi, confirm ALT2 pinmux and a 512×342 DPI mode:
+
+```bash
+./scripts/validate-dpi.sh
+```
+
+Pinmux success does not put pixels on GPIO19. VIDEO is valid only after a DRM
+client paints the DPI connector. Optional probe after `sudo apt install
+kms++-utils`:
+
+```bash
+kmstest
+```
+
+The live pipeline still publishes HTTP MJPEG. A KMS writer that consumes
+`MonoFrame` is the next software step. The original logic board and
+analog-board power loading remain hardware concerns outside this repository.
 
 ## Tests
 
-Conversion tests do not need a Raspberry Pi or capture dongle:
+Conversion and DPI pin-map tests do not need a Raspberry Pi or capture dongle:
 
 ```bash
 .venv/bin/python -m pytest
@@ -376,7 +417,7 @@ Conversion tests do not need a Raspberry Pi or capture dongle:
 
 ## Safety and scope
 
-This repository does not drive a CRT, change boot configuration, manipulate
-GPIO timing, or connect to an analog board. Test the software pipeline with a
-preview first, and treat the eventual Macintosh electrical interface as a
-separate hardware project.
+This repository does not drive a CRT, write `/boot/firmware/config.txt`,
+bit-bang GPIO, or connect to an analog board. Test the software pipeline with
+a preview first. Treat the Macintosh electrical interface as a separate
+hardware project, including level translation and analog-board power.

@@ -1,24 +1,55 @@
-# EXPERIMENTAL REFERENCE ONLY
+# Raspberry Pi 4 / Raspberry Pi OS Bookworm KMS DPI fragment
 #
-# Do not copy this file directly into /boot/firmware/config.txt.
-# Validate the current Raspberry Pi OS KMS/DPI configuration syntax, GPIO
-# mapping, signal polarity, and electrical interface before experimenting.
+# Do not copy this file blindly into /boot/firmware/config.txt.
+# This project will not apply boot settings automatically. Append the
+# dtoverlay/dtparam lines below only after reviewing pinmux conflicts and
+# using a 3.3 V to analog-board level buffer. Then reboot and run
+# scripts/validate-dpi.sh.
 #
-# The numbers below describe the target raster model:
+# Bookworm already loads dtoverlay=vc4-kms-v3d. Do not duplicate that
+# overlay. Legacy firmware DPI settings (dtoverlay=dpi24, enable_dpi_lcd,
+# dpi_timings, dpi_output_format) are obsolete on Bookworm and must not be
+# used.
+#
+# Locked three-wire map (Pi 4 40-pin header, DPI ALT2):
+#
+#   Signal  BCM GPIO  Header pin  DPI function
+#   VSYNC          2           3  LCD_VSYNC
+#   HSYNC          3           5  LCD_HSYNC
+#   VIDEO         19          35  DPI_D15 (RGB565 R7)
+#   GND            -   6, 9, 14, 20, 25, 30, 34, or 39
+#
+# RGB565 (official mode 2) muxes GPIOs 0-19. Software must write white as
+# full-on RGB and black as zero so R7 follows the 1-bit raster. GPIO8 (B7)
+# and GPIO14 (G7) would also toggle; do not wire them. GPIO19 is the VIDEO
+# tap.
+#
+# Expected pinmux conflicts with this overlay:
+#   dtparam=i2c_arm=off     GPIO2/3 are I2C1
+#   dtparam=spi=off         SPI0 overlaps GPIO7-11
+#   enable_uart=0           GPIO14/15 are claimed; use USB serial or HDMI
+#   HAT EEPROM GPIO0/1      claimed as PCLK/DE; skip EEPROM for bring-up
+#
+# Raster model (KMS-legal Macintosh Plus 512x342 @ ~60.15 Hz):
+#   pixel clock:  15667200 Hz
 #   active:       512 x 342
-#   total:        approximately 704 x 370
-#   pixel clock:  approximately 15.67 MHz
-#   refresh:      approximately 60.15 Hz
+#   total:        704 x 370
+#   hfp/hsync/hbp: 32 / 128 / 32
+#   vfp/vsync/vbp: 11 / 3 / 14
 #
-# A legacy firmware-style timing model would be shaped approximately like:
+# Original compact-Mac HSYNC is much longer than 128 clocks, and Macintosh
+# Plus VSYNC can be long. Porch widths, sync pulse lengths, and polarity are
+# overlay parameters and can be tuned later without moving the three wires.
+# hsync-invert and vsync-invert match typical compact-Mac active-low sync.
+# Video polarity is convert.invert in config, not a GPIO change.
 #
-# dtoverlay=dpi24
-# enable_dpi_lcd=1
-# display_default_lcd=1
-# dpi_group=2
-# dpi_mode=87
-# dpi_timings=15670000 512 32 128 32 342 11 3 14 0 0 0 0 0 0 0 0
-#
-# The exact dpi_timings field order and output-format value are platform and
-# firmware dependent. KMS may require a video= or custom DRM mode instead.
-# This project will not apply boot settings automatically.
+# Device-tree parameter lines must stay at or under 80 characters.
+
+dtparam=i2c_arm=off
+dtparam=spi=off
+
+dtoverlay=vc4-kms-dpi-generic,rgb565
+dtparam=clock-frequency=15667200
+dtparam=hactive=512,hfp=32,hsync=128,hbp=32
+dtparam=vactive=342,vfp=11,vsync=3,vbp=14
+dtparam=hsync-invert,vsync-invert
