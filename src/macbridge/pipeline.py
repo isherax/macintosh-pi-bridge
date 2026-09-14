@@ -11,7 +11,7 @@ import numpy as np
 from macbridge.capture import V4L2Capture
 from macbridge.config import ConvertSettings
 from macbridge.convert import convert_frame
-from macbridge.outputs.preview import MjpegPreviewOutput
+from macbridge.outputs import FrameOutput
 
 
 class PipelineError(RuntimeError):
@@ -101,13 +101,14 @@ def _capture_worker(
 def run_pipeline(
     capture: V4L2Capture,
     convert_settings: ConvertSettings,
-    output: MjpegPreviewOutput,
+    output: FrameOutput,
 ) -> PipelineStats:
     """Run capture → conversion → output until interrupted or a failure occurs.
 
     Capture occurs on a worker thread and feeds a one-slot buffer. If
     conversion or output is slower than the source, intermediate frames are
-    overwritten instead of accumulating latency.
+    overwritten instead of accumulating latency. ``output`` may be the KMS
+    writer, the HTTP preview, or both.
     """
 
     stats = PipelineStats()

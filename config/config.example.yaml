@@ -25,6 +25,12 @@ convert:
   invert: false
 
 output:
+  # Paint GPIO19 VIDEO through KMS. Requires the dtoverlay fragment in
+  # config/dpi-config.txt.example. Use --output preview to skip KMS.
+  kms: true
+  preview: true
+  connector: ""
+  device: ""
   bind: 0.0.0.0
   port: 5000
   jpeg_quality: 80

@@ -1,4 +1,4 @@
-"""Small YAML configuration loader for the bridge."""
+"""Configuration loader for capture, conversion, KMS, and preview."""
 
 from __future__ import annotations
 
@@ -28,6 +28,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "invert": False,
     },
     "output": {
+        "kms": True,
+        "preview": True,
+        "connector": "",
+        "device": "",
         "bind": "0.0.0.0",
         "port": 5000,
         "jpeg_quality": 80,
@@ -68,12 +72,41 @@ class PreviewSettings:
 
 
 @dataclass(frozen=True)
+class OutputSettings:
+    """KMS/DPI writer and optional HTTP preview settings."""
+
+    kms: bool = True
+    preview: bool = True
+    connector: str = ""
+    device: str = ""
+    bind: str = "0.0.0.0"
+    port: int = 5000
+    jpeg_quality: int = 80
+
+    @property
+    def preview_settings(self) -> "PreviewSettings":
+        """Return the HTTP preview fields as a dedicated settings object."""
+
+        return PreviewSettings(
+            bind=self.bind,
+            port=self.port,
+            jpeg_quality=self.jpeg_quality,
+        )
+
+
+@dataclass(frozen=True)
 class AppConfig:
-    """Validated configuration for the capture and preview pipeline."""
+    """Validated configuration for capture, conversion, and outputs."""
 
     capture: CaptureSettings
     convert: ConvertSettings
-    preview: PreviewSettings
+    output: OutputSettings
+
+    @property
+    def preview(self) -> PreviewSettings:
+        """Return HTTP preview settings for callers that only need preview."""
+
+        return self.output.preview_settings
 
 
 def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
@@ -159,7 +192,22 @@ def _build_config(values: Dict[str, Any]) -> AppConfig:
     if not 1 <= preview.jpeg_quality <= 100:
         raise ValueError("output.jpeg_quality must be between 1 and 100")
 
-    return AppConfig(capture=capture, convert=convert, preview=preview)
+    kms_enabled = bool(output_values.get("kms", True))
+    preview_enabled = bool(output_values.get("preview", True))
+    if not kms_enabled and not preview_enabled:
+        raise ValueError("output.kms and output.preview cannot both be false")
+
+    output = OutputSettings(
+        kms=kms_enabled,
+        preview=preview_enabled,
+        connector=str(output_values.get("connector", "") or ""),
+        device=str(output_values.get("device", "") or ""),
+        bind=preview.bind,
+        port=preview.port,
+        jpeg_quality=preview.jpeg_quality,
+    )
+
+    return AppConfig(capture=capture, convert=convert, output=output)
 
 
 def load_config(path: Optional[PathLike] = None) -> AppConfig:

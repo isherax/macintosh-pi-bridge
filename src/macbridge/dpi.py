@@ -1,4 +1,5 @@
-"""Locked Raspberry Pi 4 KMS/DPI pin map and Macintosh Plus raster timing.
+"""Locked Raspberry Pi 4 KMS/DPI pin map, Macintosh Plus raster timing,
+and RGB565 packing so GPIO19 (R7) follows the 1-bit VIDEO raster.
 
 The BCM2711 Display Parallel Interface uses GPIO alternate function 2.
 VSYNC is fixed on GPIO2 (LCD_VSYNC) and HSYNC is fixed on GPIO3
@@ -17,6 +18,8 @@ handled by conversion, not by choosing a different GPIO.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -98,3 +101,27 @@ TIMING = DpiTiming(
     hsync_active_low=True,
     vsync_active_low=True,
 )
+
+# RGB565 white sets R7/G7/B7. GPIO19 (R7) is the VIDEO tap; do not wire G7/B7.
+RGB565_BLACK = np.uint16(0x0000)
+RGB565_WHITE = np.uint16(0xFFFF)
+RGB565_R7_MASK = np.uint16(0x8000)
+
+
+def pack_video_rgb565(pixels: np.ndarray) -> np.ndarray:
+    """Map a 0/1 raster to RGB565 so GPIO19 (R7) follows each pixel.
+
+    Official DPI mode 2 places R[7:3] on GPIO19-15. Full-scale white
+    (0xFFFF) and zero black keep R7 identical to the 1-bit raster. G7 and
+    B7 also toggle under this convention and must stay unwired.
+    """
+
+    raster = np.asarray(pixels)
+    if raster.ndim != 2:
+        raise ValueError("RGB565 packing requires a two-dimensional raster")
+    if raster.dtype != np.uint8:
+        raise ValueError("RGB565 packing requires uint8 pixels")
+    return np.where(raster != 0, RGB565_WHITE, RGB565_BLACK).astype(
+        np.uint16,
+        copy=False,
+    )

@@ -5,10 +5,11 @@ This project turns an HDMI signal from an external Linux computer into a
 CRT output stage. A Raspberry Pi handles capture and conversion; it is not the
 computer running the desktop.
 
-The current stage uses a USB UVC HDMI capture dongle and a network preview.
-The Pi 4 KMS/DPI pin map is locked so the analog-board interposer can be
-wired once. This repository still does not drive a CRT, write boot
-configuration, or attach to an analog board.
+The current stage captures HDMI, converts it to a 512×342 1-bit raster, and
+paints that raster onto the Pi 4 DPI connector through KMS. An HTTP MJPEG
+preview remains available over the network. The Pi 4 KMS/DPI pin map is locked
+so the analog-board interposer can be wired once. This repository still does
+not write boot configuration or attach to an analog board.
 
 ## Design goals
 
@@ -16,9 +17,9 @@ configuration, or attach to an analog board.
 - Keep the live path low-latency by dropping stale frames.
 - Preserve the input aspect ratio while producing exactly 512×342 pixels.
 - Optimize the final 1-bit image for readable text and UI elements.
-- Keep capture and conversion separate from preview so a later DPI output can
-  replace it.
-- Use Linux V4L2/KMS/DPI hardware timing later; never bit-bang GPIO in Python.
+- Keep capture and conversion separate from output so KMS/DPI and the HTTP
+  preview can run together or independently.
+- Use Linux V4L2/KMS/DPI hardware timing; never bit-bang GPIO in Python.
 - Keep hostnames, usernames, IP addresses, and local device details out of git.
 
 ## Current pipeline
@@ -36,6 +37,7 @@ macbridge.capture
 macbridge.convert
   aspect fit → grayscale → threshold/dither → 512×342 1-bit
         │
+        ├── KMS/DPI RGB565 (GPIO19 VIDEO, GPIO2/3 sync)
         └── HTTP MJPEG preview
 ```
 
@@ -74,14 +76,17 @@ macintosh-pi-bridge/
 │       ├── capture.py
 │       ├── convert.py
 │       ├── dpi.py
+│       ├── drm.py
 │       ├── patterns.py
 │       ├── pipeline.py
 │       └── outputs/
 │           ├── __init__.py
+│           ├── kms.py
 │           └── preview.py
 └── tests/
     ├── test_convert.py
-    └── test_dpi.py
+    ├── test_dpi.py
+    └── test_kms.py
 ```
 
 `config/local.yaml` is intentionally absent from the repository. Copy the
@@ -151,8 +156,8 @@ rsync -av \
   ./ user@raspberrypi.local:~/macintosh-pi-bridge/
 ```
 
-The Pi user must be able to read the capture node. Check the group membership
-and add the user to `video` if necessary:
+The Pi user must be able to read the capture node and `/dev/dri`. Check the
+group membership and add the user to `video` if necessary:
 
 ```bash
 id -nG
@@ -261,10 +266,11 @@ inspection, for example with `MJPG` or `YUYV`.
 
 ## Test conversion and preview without a dongle
 
-Start a synthetic 512×342 test card:
+Start a synthetic 512×342 test card. On a machine without the DPI overlay,
+keep the HTTP preview only:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m macbridge pattern
+PYTHONPATH=src .venv/bin/python -m macbridge pattern --output preview
 ```
 
 The preview server listens on `http://127.0.0.1:5000/` by default. View it
@@ -284,6 +290,43 @@ ffplay -fflags nobuffer -flags low_delay \
   http://127.0.0.1:15000/stream.mjpg
 ```
 
+## Paint the Macintosh CRT
+
+After the analog-board interposer is wired, the DPI overlay is appended to
+`/boot/firmware/config.txt`, and the Pi has rebooted, confirm pinmux and the
+512×342 mode:
+
+```bash
+./scripts/validate-dpi.sh
+```
+
+Then paint a held test card on the DPI connector. Leave the process running;
+exiting the DRM client blanks VIDEO:
+
+```bash
+PYTHONPATH=src python3 -m macbridge kms-test
+```
+
+The test card uses the same conversion settings as the live pipeline, including
+`convert.invert`. If the CRT shows a negative image, set `invert: true` in
+`config/local.yaml` and run `kms-test` again.
+
+The service account or SSH user must be in the `video` group for `/dev/dri`.
+Stop a desktop compositor, plymouth, or `kmstest` if the card reports busy.
+
+With HDMI capture running, paint live frames and keep the network preview:
+
+```bash
+PYTHONPATH=src python3 -m macbridge run --device /dev/video0
+```
+
+`run` defaults to both KMS and HTTP preview. Override for a single backend:
+
+```bash
+PYTHONPATH=src python3 -m macbridge run --output kms
+PYTHONPATH=src python3 -m macbridge pattern --output preview
+```
+
 ## Run the live pipeline
 
 With the source computer sending a supported HDMI mode:
@@ -294,7 +337,8 @@ PYTHONPATH=src python3 -m macbridge run --device /dev/video0
 
 The command loads `config/local.yaml` if it exists, otherwise the example
 defaults. It opens the selected capture device, converts each newest frame to
-512×342 1-bit, and publishes an HTTP MJPEG preview.
+512×342 1-bit, paints RGB565 on the DPI connector, and publishes an HTTP MJPEG
+preview. Use `--output preview` if the DPI overlay is not installed yet.
 
 To leave the pipeline running after ending the SSH shell, use a process
 supervisor or, for a temporary test:
@@ -335,6 +379,15 @@ JPEG preview.
 - **Terminal or icons are hard to read:** increase the source desktop's font
   and icon sizes. A 512×342 1-bit display cannot recover detail that was
   rendered smaller than a few source pixels.
+- **`No DPI connector found`:** append the `dtoverlay`/`dtparam` lines from
+  `config/dpi-config.txt.example` to `/boot/firmware/config.txt`, reboot, and
+  run `scripts/validate-dpi.sh`. Use `--output preview` until that succeeds.
+- **DRM device is busy:** stop the desktop compositor, plymouth, `kmstest`,
+  or another `macbridge` process. Only one DRM master can own the card.
+- **CRT is blank after `kms-test` exits:** the DRM client must keep running.
+  Leave `kms-test` or `run` in the foreground, `nohup`, or systemd.
+- **CRT image is inverted:** set `convert.invert: true` in
+  `config/local.yaml`. Video polarity is not a GPIO change.
 
 ## systemd
 
@@ -350,8 +403,8 @@ sudo systemctl enable --now macbridge.service
 sudo systemctl status macbridge.service
 ```
 
-The service account must be able to read the capture node, normally through
-the `video` group.
+The service account must be able to read the capture node and the DRM device,
+normally through the `video` group.
 
 ## Pi 4 KMS/DPI pin lock
 
@@ -395,21 +448,30 @@ On the Pi, confirm ALT2 pinmux and a 512×342 DPI mode:
 ./scripts/validate-dpi.sh
 ```
 
-Pinmux success does not put pixels on GPIO19. VIDEO is valid only after a DRM
-client paints the DPI connector. Optional probe after `sudo apt install
-kms++-utils`:
+Pinmux success does not put pixels on GPIO19. VIDEO is valid only while a DRM
+client holds the DPI connector. This repository's writer does that:
+
+```bash
+PYTHONPATH=src python3 -m macbridge kms-test
+```
+
+Optional probe after `sudo apt install kms++-utils`:
 
 ```bash
 kmstest
 ```
 
-The live pipeline still publishes HTTP MJPEG. A KMS writer that consumes
-`MonoFrame` is the next software step. The original logic board and
-analog-board power loading remain hardware concerns outside this repository.
+`kmstest` is a diagnostic, not the live pipeline. Stop it before starting
+`kms-test` or `run`; only one DRM master can own the card.
+
+The live pipeline paints `MonoFrame` as RGB565 on the DPI connector and can
+still publish HTTP MJPEG. The original logic board and analog-board power
+loading remain hardware concerns outside this repository.
 
 ## Tests
 
-Conversion and DPI pin-map tests do not need a Raspberry Pi or capture dongle:
+Conversion, DPI pin-map, RGB565 packing, and KMS selection tests do not need a
+Raspberry Pi or capture dongle:
 
 ```bash
 .venv/bin/python -m pytest
@@ -417,7 +479,7 @@ Conversion and DPI pin-map tests do not need a Raspberry Pi or capture dongle:
 
 ## Safety and scope
 
-This repository does not drive a CRT, write `/boot/firmware/config.txt`,
-bit-bang GPIO, or connect to an analog board. Test the software pipeline with
-a preview first. Treat the Macintosh electrical interface as a separate
-hardware project, including level translation and analog-board power.
+This repository does not write `/boot/firmware/config.txt`, bit-bang GPIO, or
+connect to an analog board. The KMS writer paints the DPI connector; level
+translation and analog-board power remain a separate hardware project. Test
+the software pipeline with `kms-test` before sending live HDMI.

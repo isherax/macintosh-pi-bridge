@@ -4,7 +4,9 @@
 # config/dpi-config.txt.example. Run this on the Raspberry Pi after reboot.
 #
 # Pinmux assignment does not put pixels on GPIO19. VIDEO is valid only after
-# a DRM client paints white/black on the DPI connector. Optional probe:
+# a DRM client paints white/black on the DPI connector:
+#   PYTHONPATH=src python3 -m macbridge kms-test
+# Optional probe:
 #   sudo apt install kms++-utils
 #   kmstest
 
@@ -146,6 +148,8 @@ check_dpi_mode
 section "video probe"
 printf 'GPIO19 carries VIDEO only while a DRM client paints the DPI\n'
 printf 'connector. Pinmux success does not mean the data pin is toggling.\n'
+printf 'Paint a held test card with:\n'
+printf '  PYTHONPATH=src python3 -m macbridge kms-test\n'
 printf 'Optional: sudo apt install kms++-utils && kmstest\n'
 
 if [[ "$failures" -ne 0 ]]; then

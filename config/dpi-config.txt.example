@@ -3,8 +3,9 @@
 # Do not copy this file blindly into /boot/firmware/config.txt.
 # This project will not apply boot settings automatically. Append the
 # dtoverlay/dtparam lines below only after reviewing pinmux conflicts and
-# using a 3.3 V to analog-board level buffer. Then reboot and run
-# scripts/validate-dpi.sh.
+# using a 3.3 V to analog-board level buffer. Then reboot, run
+# scripts/validate-dpi.sh, and paint a test card with:
+#   PYTHONPATH=src python3 -m macbridge kms-test
 #
 # Bookworm already loads dtoverlay=vc4-kms-v3d. Do not duplicate that
 # overlay. Legacy firmware DPI settings (dtoverlay=dpi24, enable_dpi_lcd,
