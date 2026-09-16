@@ -13,6 +13,11 @@ toggle under that convention; they are not the wiring tap.
 Porch widths, sync pulse lengths, and sync polarity are overlay parameters.
 They can change without moving the three CRT wires. Video polarity is
 handled by conversion, not by choosing a different GPIO.
+
+The locked raster keeps Apple's 704x370 total and 15.6672 MHz clock.
+Horizontal sync is the long compact-Mac pulse (178 clocks). Front and back
+porches are the KMS-legal 12/2 split of Apple's 14/0 blanking so VC4 never
+sees a zero porch. Vertical sync is 4 lines with a 1-line front porch.
 """
 
 from __future__ import annotations
@@ -91,13 +96,13 @@ GROUND_HEADER_PINS = (6, 9, 14, 20, 25, 30, 34, 39)
 TIMING = DpiTiming(
     pixel_clock_hz=15_667_200,
     hactive=512,
-    hfp=32,
-    hsync=128,
-    hbp=32,
+    hfp=12,
+    hsync=178,
+    hbp=2,
     vactive=342,
-    vfp=11,
-    vsync=3,
-    vbp=14,
+    vfp=1,
+    vsync=4,
+    vbp=23,
     hsync_active_low=True,
     vsync_active_low=True,
 )

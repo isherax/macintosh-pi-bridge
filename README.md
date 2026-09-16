@@ -384,6 +384,13 @@ JPEG preview.
   run `scripts/validate-dpi.sh`. Use `--output preview` until that succeeds.
 - **DRM device is busy:** stop the desktop compositor, plymouth, `kmstest`,
   or another `macbridge` process. Only one DRM master can own the card.
+- **CRT is blank while `kms-test` is running:** the analog board often will
+  not lock to a short generic HSYNC. Confirm `validate-dpi.sh` reports
+  `512x342` and a 704-wide mode, then make sure `/boot/firmware/config.txt`
+  uses the 12/178/2 and 1/4/23 porches from
+  `config/dpi-config.txt.example`. Do not use `hbp=0` or `vfp=0`; VC4 can
+  stall. Power the Mac off before editing boot config, reboot the Pi, then
+  start `kms-test` before powering the Mac on again.
 - **CRT is blank after `kms-test` exits:** the DRM client must keep running.
   Leave `kms-test` or `run` in the foreground, `nohup`, or systemd.
 - **CRT image is inverted:** set `convert.invert: true` in
@@ -427,10 +434,11 @@ them. A later custom overlay can mux only GPIO2/3/19 without moving the
 wires.
 
 `config/dpi-config.txt.example` is a Bookworm `vc4-kms-dpi-generic` fragment
-for 512×342 at 15.6672 MHz (704×370 total, about 60.15 Hz). It is not applied
-automatically. Legacy `dtoverlay=dpi24` / `dpi_timings` entries are obsolete
-on Bookworm. After reviewing pinmux conflicts in that file, append the
-`dtparam`/`dtoverlay` lines to `/boot/firmware/config.txt` and reboot:
+for 512×342 at 15.6672 MHz (704×370 total, about 60.15 Hz) with compact-Mac
+HSYNC at 178 clocks. It is not applied automatically. Legacy
+`dtoverlay=dpi24` / `dpi_timings` entries are obsolete on Bookworm. After
+reviewing pinmux conflicts in that file, append the `dtparam`/`dtoverlay`
+lines to `/boot/firmware/config.txt` and reboot:
 
 ```bash
 # Review the fragment, then append only the dtoverlay/dtparam lines.

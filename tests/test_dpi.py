@@ -44,7 +44,13 @@ def test_rgb565_mode2_red_msb_is_the_video_tap() -> None:
 def test_timing_is_kms_legal_macintosh_plus_raster() -> None:
     assert TIMING.pixel_clock_hz == 15_667_200
     assert TIMING.hactive == 512
+    assert TIMING.hfp == 12
+    assert TIMING.hsync == 178
+    assert TIMING.hbp == 2
     assert TIMING.vactive == 342
+    assert TIMING.vfp == 1
+    assert TIMING.vsync == 4
+    assert TIMING.vbp == 23
     assert TIMING.htotal == 704
     assert TIMING.vtotal == 370
     assert TIMING.hsync_active_low

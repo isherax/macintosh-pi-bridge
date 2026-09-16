@@ -35,12 +35,14 @@
 #   pixel clock:  15667200 Hz
 #   active:       512 x 342
 #   total:        704 x 370
-#   hfp/hsync/hbp: 32 / 128 / 32
-#   vfp/vsync/vbp: 11 / 3 / 14
+#   hfp/hsync/hbp: 12 / 178 / 2
+#   vfp/vsync/vbp: 1 / 4 / 23
 #
-# Original compact-Mac HSYNC is much longer than 128 clocks, and Macintosh
-# Plus VSYNC can be long. Porch widths, sync pulse lengths, and polarity are
-# overlay parameters and can be tuned later without moving the three wires.
+# Compact-Mac HSYNC is a long pulse. Apple's documented 14/178/0 and 0/4/24
+# split has zero porches; VC4 can stall on those (flip_done timed out). The
+# 12/178/2 and 1/4/23 values keep the same 704x370 total, lengthen HSYNC to
+# 178 clocks, and give the pipeline non-zero porches. Do not switch this
+# fragment to rgb888: that would move VIDEO off GPIO19.
 # hsync-invert and vsync-invert match typical compact-Mac active-low sync.
 # Video polarity is convert.invert in config, not a GPIO change.
 #
@@ -51,6 +53,6 @@ dtparam=spi=off
 
 dtoverlay=vc4-kms-dpi-generic,rgb565
 dtparam=clock-frequency=15667200
-dtparam=hactive=512,hfp=32,hsync=128,hbp=32
-dtparam=vactive=342,vfp=11,vsync=3,vbp=14
+dtparam=hactive=512,hfp=12,hsync=178,hbp=2
+dtparam=vactive=342,vfp=1,vsync=4,vbp=23
 dtparam=hsync-invert,vsync-invert
